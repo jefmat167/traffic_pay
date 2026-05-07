@@ -45,9 +45,8 @@ export class CampaignsService {
         .getRepository(Wallet)
         .createQueryBuilder()
         .update()
-        .set({ balance: () => 'balance - :budget' })
-        .setParameter('budget', dto.budget)
-        .where('userId = :userId AND balance >= :budget', {
+        .set({ balance: () => '"balance" - :budget' })
+        .where('"userId" = :userId AND "balance" >= :budget', {
           userId,
           budget: dto.budget,
         })

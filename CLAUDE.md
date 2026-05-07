@@ -97,9 +97,17 @@ Google OAuth only (verify `idToken` server-side). JWT access tokens (RS256, 15m 
 
 `platform:stats` (5min), `platform:config` (1hr), `campaign:list:{hash}` (30s), `user:blocked:{userId}` (60s).
 
+### TypeScript / Imports
+
+`tsconfig.json` uses `moduleResolution: "nodenext"` — use explicit `.js` extensions in relative imports if needed. `strictNullChecks` and `noImplicitAny` are enabled.
+
+### Validation
+
+Global `ValidationPipe` is configured with `whitelist: true`, `forbidNonWhitelisted: true`, `transform: true`, and `enableImplicitConversion: true`. DTOs should use `class-validator` decorators; unknown properties are automatically stripped and rejected.
+
 ### Configuration
 
-`src/config/configuration.ts` — single config factory loaded globally via `ConfigModule`. `src/config/data-source.ts` — standalone TypeORM DataSource for CLI migrations (`entities` and `migrations` paths are glob-based there, but the app uses `autoLoadEntities: true`).
+`src/config/configuration.ts` — single config factory loaded globally via `ConfigModule`. `src/config/data-source.ts` — standalone TypeORM DataSource for CLI migrations (`entities` and `migrations` paths are glob-based there, but the app uses `autoLoadEntities: true`). Migrations live in `src/database/migrations/`.
 
 ### Environment Variables
 
