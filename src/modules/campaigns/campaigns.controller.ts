@@ -90,7 +90,7 @@ export class CampaignsController {
   @ApiOkResponse({ description: 'Paginated list of own campaigns (same shape as GET /campaigns)' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   listMyCampaigns(
-    @CurrentUser('sub') userId: string,
+    @CurrentUser('id') userId: string,
     @Query() query: ListCampaignsDto,
   ) {
     return this.campaignsService.listMyCampaigns(userId, query);
@@ -136,7 +136,7 @@ export class CampaignsController {
   @ApiBadRequestResponse({ description: 'Insufficient budget or insufficient wallet balance' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   createCampaign(
-    @CurrentUser('sub') userId: string,
+    @CurrentUser('id') userId: string,
     @Body() dto: CreateCampaignDto,
   ) {
     return this.campaignsService.createCampaign(userId, dto);
