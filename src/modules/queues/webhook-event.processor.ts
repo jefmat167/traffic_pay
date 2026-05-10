@@ -13,8 +13,29 @@ export class WebhookEventProcessor extends WorkerHost {
 
   async process(job: Job<{ event: string; data: any }>) {
     const { event, data } = job.data;
-    this.logger.log({ event: 'processing_webhook', paystackEvent: event });
+    this.logger.log({
+      message: 'Processing webhook job',
+      jobId: job.id,
+      event,
+      reference: data?.reference,
+    });
 
-    await this.walletService.handlePaystackWebhook(event, data);
+    try {
+      await this.walletService.handlePaystackWebhook(event, data);
+      this.logger.log({
+        message: 'Webhook job completed',
+        jobId: job.id,
+        event,
+      });
+    } catch (error) {
+      this.logger.error({
+        message: 'Webhook job failed',
+        jobId: job.id,
+        event,
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    }
   }
 }

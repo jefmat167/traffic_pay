@@ -2,7 +2,6 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import * as express from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
@@ -17,9 +16,6 @@ async function bootstrap() {
     origin: config.get('corsOrigins'),
     credentials: true,
   });
-
-  // Raw body for Paystack webhook — must be before setGlobalPrefix
-  app.use('/v1/webhooks/paystack', express.raw({ type: 'application/json' }));
 
   app.setGlobalPrefix('v1');
 

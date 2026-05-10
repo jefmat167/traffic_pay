@@ -24,6 +24,16 @@ import { AdminModule } from './modules/admin/admin.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { QueuesModule } from './modules/queues/queues.module';
 
+const optionalModules: any[] = [];
+try {
+  // TestAuthModule is gitignored — only available in local dev
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { TestAuthModule } = require('./modules/test-auth/test-auth.module');
+  optionalModules.push(TestAuthModule);
+} catch {
+  // Not available (production) — skip
+}
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
@@ -56,6 +66,7 @@ import { QueuesModule } from './modules/queues/queues.module';
     AdminModule,
     WebhooksModule,
     QueuesModule,
+    ...optionalModules,
   ],
   providers: [
     // Guard order matters: Throttler → JWT → Block → Roles → Deposit

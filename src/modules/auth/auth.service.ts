@@ -133,7 +133,7 @@ export class AuthService {
     );
   }
 
-  private async issueTokenPair(user: User) {
+  async issueTokenPair(user: User) {
     const accessToken = this.jwtService.sign({
       sub: user.id,
       role: user.role,

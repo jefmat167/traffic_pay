@@ -263,18 +263,50 @@ export class WalletService {
   // ── Handle Paystack webhook ────────────────────────────────────────
 
   async handlePaystackWebhook(event: string, data: any): Promise<void> {
+    this.logger.log({
+      message: 'Handling Paystack webhook',
+      event,
+      reference: data?.reference,
+      amount: data?.amount,
+    });
+
     switch (event) {
       case 'charge.success': {
         const reference = data.reference;
         const txn = await this.transactionRepo.findOneBy({
           paystackReference: reference,
         });
-        if (!txn || txn.status === TransactionStatus.SUCCESSFUL) return;
+
+        if (!txn) {
+          this.logger.warn({
+            message: 'Transaction not found for webhook reference',
+            reference,
+          });
+          return;
+        }
+
+        if (txn.status === TransactionStatus.SUCCESSFUL) {
+          this.logger.log({
+            message: 'Transaction already successful, skipping',
+            reference,
+            txnId: txn.id,
+          });
+          return;
+        }
+
+        this.logger.log({
+          message: 'Crediting wallet from webhook',
+          reference,
+          txnId: txn.id,
+          userId: txn.userId,
+          amount: data.amount,
+        });
 
         await this.creditWalletFromDeposit(txn.userId, txn.id, data.amount);
         this.logger.log({
-          event: 'webhook_charge_success',
+          message: 'Wallet credited successfully via webhook',
           reference,
+          txnId: txn.id,
         });
         break;
       }
