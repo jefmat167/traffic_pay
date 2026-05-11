@@ -33,15 +33,16 @@ export class WithdrawalProcessor extends WorkerHost {
     }
 
     try {
-      const recipient = await this.paystackService.createTransferRecipient(
-        withdrawal.bankAccount.bankCode,
+      const recipientCode = await this.paystackService.createTransferRecipient(
         withdrawal.bankAccount.accountNumber,
+        withdrawal.bankAccount.bankCode,
         withdrawal.bankAccount.accountName,
       );
 
       const transfer = await this.paystackService.initiateTransfer(
+        recipientCode,
         withdrawal.amount,
-        recipient.recipient_code,
+        `WDR_${withdrawal.id}`,
         'TrafficPay withdrawal',
       );
 

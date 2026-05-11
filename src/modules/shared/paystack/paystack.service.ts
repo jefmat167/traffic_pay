@@ -1,127 +1,299 @@
 import {
-  BadRequestException,
   Injectable,
-  InternalServerErrorException,
   Logger,
+  BadRequestException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac } from 'crypto';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
+import * as crypto from 'crypto';
 
-export interface InitializeTxnPayload {
-  email: string;
+export interface PaystackInitResponse {
+  authorization_url: string;
+  access_code: string;
+  reference: string;
+}
+
+export interface PaystackVerifyResponse {
+  status: string;
+  reference: string;
   amount: number;
-  reference?: string;
-  callback_url?: string;
-  metadata?: Record<string, any>;
+  currency: string;
+  channel: string;
+  paid_at: string;
+  metadata: Record<string, unknown>;
+  customer: {
+    email: string;
+    phone: string;
+  };
+}
+
+export interface PaystackTransferResponse {
+  status: string;
+  reference: string;
+  amount: number;
+  transfer_code: string;
+}
+
+export interface PaystackBankListResponse {
+  name: string;
+  code: string;
+  country: string;
+  currency: string;
+  type: string;
+}
+
+export interface PaystackAccountVerifyResponse {
+  account_number: string;
+  account_name: string;
+  bank_id: number;
 }
 
 @Injectable()
 export class PaystackService {
   private readonly logger = new Logger(PaystackService.name);
-  private readonly baseUrl = 'https://api.paystack.co';
-  private readonly headers: Record<string, string>;
+  private readonly baseUrl: string;
+  private readonly secretKey: string;
+  private readonly isConfigured: boolean;
 
-  constructor(private config: ConfigService) {
-    this.headers = {
-      Authorization: `Bearer ${this.config.get('paystackSecretKey')}`,
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+  ) {
+    this.secretKey = this.configService.get<string>('paystackSecretKey', '');
+    this.baseUrl = 'https://api.paystack.co';
+    this.isConfigured = !!this.secretKey;
+
+    if (!this.isConfigured) {
+      this.logger.warn('Paystack is not configured. Payment features will be disabled.');
+    }
+  }
+
+  private getHeaders() {
+    return {
+      Authorization: `Bearer ${this.secretKey}`,
       'Content-Type': 'application/json',
     };
   }
 
-  private async paystackRequest<T>(
-    method: string,
-    path: string,
-    body?: unknown,
-  ): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: this.headers,
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
-    const json = (await res.json()) as any;
-    if (!res.ok || !json.status) {
-      this.logger.error({
-        event: 'paystack_api_error',
-        path,
-        status: res.status,
-        message: json.message,
-      });
-      throw new InternalServerErrorException(
-        `Paystack error: ${json.message ?? res.statusText}`,
-      );
+  private checkConfigured() {
+    if (!this.isConfigured) {
+      throw new InternalServerErrorException('Payment service is not configured');
     }
-    return json.data as T;
   }
 
-  async initializeTransaction(payload: InitializeTxnPayload) {
-    return this.paystackRequest<{ authorization_url: string; reference: string }>(
-      'POST',
-      '/transaction/initialize',
-      payload,
-    );
+  async initializeTransaction(
+    email: string,
+    amount: number, // in kobo
+    reference: string,
+    metadata: Record<string, unknown> = {},
+    callbackUrl?: string,
+  ): Promise<PaystackInitResponse> {
+    this.checkConfigured();
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.baseUrl}/transaction/initialize`,
+          {
+            email,
+            amount, // already in kobo
+            reference,
+            metadata,
+            callback_url: callbackUrl,
+            channels: ['card', 'bank', 'ussd', 'bank_transfer'],
+          },
+          { headers: this.getHeaders() },
+        ),
+      );
+
+      if (!response.data.status) {
+        throw new BadRequestException(response.data.message || 'Failed to initialize transaction');
+      }
+
+      this.logger.log(`Transaction initialized: ${reference}`);
+      return response.data.data;
+    } catch (error) {
+      this.logger.error('Failed to initialize transaction', error.response?.data || error.message);
+      throw new InternalServerErrorException('Failed to initialize payment');
+    }
   }
 
-  async verifyTransaction(reference: string) {
-    return this.paystackRequest<{
-      status: string;
-      amount: number;
-      reference: string;
-      channel: string;
-    }>('GET', `/transaction/verify/${encodeURIComponent(reference)}`);
+  async verifyTransaction(reference: string): Promise<PaystackVerifyResponse> {
+    this.checkConfigured();
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get(
+          `${this.baseUrl}/transaction/verify/${reference}`,
+          { headers: this.getHeaders() },
+        ),
+      );
+
+      if (!response.data.status) {
+        throw new BadRequestException(response.data.message || 'Failed to verify transaction');
+      }
+
+      return response.data.data;
+    } catch (error) {
+      this.logger.error('Failed to verify transaction', error.response?.data || error.message);
+      throw new InternalServerErrorException('Failed to verify payment');
+    }
   }
 
-  async resolveAccount(
+  async listBanks(): Promise<PaystackBankListResponse[]> {
+    this.checkConfigured();
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get(
+          `${this.baseUrl}/bank?country=nigeria`,
+          { headers: this.getHeaders() },
+        ),
+      );
+
+      return response.data.data;
+    } catch (error) {
+      this.logger.error('Failed to list banks', error.response?.data || error.message);
+      throw new InternalServerErrorException('Failed to fetch bank list');
+    }
+  }
+
+  async verifyBankAccount(
     accountNumber: string,
     bankCode: string,
-  ): Promise<{ account_name: string; account_number: string }> {
-    const params = new URLSearchParams({
-      account_number: accountNumber,
-      bank_code: bankCode,
-    });
+  ): Promise<PaystackAccountVerifyResponse> {
+    this.checkConfigured();
+
     try {
-      return await this.paystackRequest('GET', `/bank/resolve?${params}`);
-    } catch {
-      throw new BadRequestException({
-        code: 'VALIDATION_ERROR',
-        message: 'Could not verify bank account.',
-      });
+      const response = await firstValueFrom(
+        this.httpService.get(
+          `${this.baseUrl}/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`,
+          { headers: this.getHeaders() },
+        ),
+      );
+
+      if (!response.data.status) {
+        throw new BadRequestException('Invalid bank account');
+      }
+
+      return response.data.data;
+    } catch (error) {
+      this.logger.error('Failed to verify bank account', error.response?.data || error.message);
+      if (error.response?.status === 422) {
+        throw new BadRequestException('Invalid bank account details');
+      }
+      throw new InternalServerErrorException('Failed to verify bank account');
     }
   }
 
   async createTransferRecipient(
-    bankCode: string,
     accountNumber: string,
+    bankCode: string,
     accountName: string,
-  ): Promise<{ recipient_code: string }> {
-    return this.paystackRequest('POST', '/transferrecipient', {
-      type: 'nuban',
-      bank_code: bankCode,
-      account_number: accountNumber,
-      name: accountName,
-      currency: 'NGN',
-    });
+  ): Promise<string> {
+    this.checkConfigured();
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.baseUrl}/transferrecipient`,
+          {
+            type: 'nuban',
+            name: accountName,
+            account_number: accountNumber,
+            bank_code: bankCode,
+            currency: 'NGN',
+          },
+          { headers: this.getHeaders() },
+        ),
+      );
+
+      if (!response.data.status) {
+        throw new BadRequestException(response.data.message || 'Failed to create recipient');
+      }
+
+      this.logger.log(`Transfer recipient created: ${accountNumber}`);
+      return response.data.data.recipient_code;
+    } catch (error) {
+      this.logger.error('Failed to create transfer recipient', error.response?.data || error.message);
+      throw new InternalServerErrorException('Failed to create transfer recipient');
+    }
   }
 
   async initiateTransfer(
-    amountKobo: number,
     recipientCode: string,
-    reason: string,
-  ): Promise<{ transfer_code: string; reference: string }> {
-    return this.paystackRequest('POST', '/transfer', {
-      source: 'balance',
-      amount: amountKobo,
-      recipient: recipientCode,
-      reason,
-    });
+    amount: number, // in kobo
+    reference: string,
+    reason: string = 'Wallet withdrawal',
+  ): Promise<PaystackTransferResponse> {
+    this.checkConfigured();
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.baseUrl}/transfer`,
+          {
+            source: 'balance',
+            amount, // already in kobo
+            recipient: recipientCode,
+            reference,
+            reason,
+          },
+          { headers: this.getHeaders() },
+        ),
+      );
+
+      if (!response.data.status) {
+        throw new BadRequestException(response.data.message || 'Failed to initiate transfer');
+      }
+
+      this.logger.log(`Transfer initiated: ${reference}`);
+      return response.data.data;
+    } catch (error) {
+      this.logger.error('Failed to initiate transfer', error.response?.data || error.message);
+      throw new InternalServerErrorException('Failed to initiate withdrawal');
+    }
   }
 
-  verifyWebhookSignature(rawBody: Buffer, signatureHeader: string): boolean {
-    const hash = createHmac(
-      'sha512',
-      this.config.get('paystackWebhookSecret')!,
-    )
-      .update(rawBody)
+  async getTransferStatus(transferCode: string): Promise<any> {
+    this.checkConfigured();
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get(
+          `${this.baseUrl}/transfer/${transferCode}`,
+          { headers: this.getHeaders() },
+        ),
+      );
+
+      return response.data.data;
+    } catch (error) {
+      this.logger.error('Failed to get transfer status', error.response?.data || error.message);
+      throw new InternalServerErrorException('Failed to get transfer status');
+    }
+  }
+
+  verifyWebhookSignature(payload: string, signature: string): boolean {
+    const webhookSecret = this.configService.get<string>('paystackWebhookSecret', '');
+    if (!webhookSecret) return false;
+
+    const hash = crypto
+      .createHmac('sha512', webhookSecret)
+      .update(payload)
       .digest('hex');
-    return hash === signatureHeader;
+
+    return hash === signature;
+  }
+
+  generateReference(prefix: string = 'TXN'): string {
+    const timestamp = Date.now().toString(36);
+    const random = crypto.randomBytes(4).toString('hex');
+    return `${prefix}_${timestamp}_${random}`.toUpperCase();
+  }
+
+  isPaystackConfigured(): boolean {
+    return this.isConfigured;
   }
 }

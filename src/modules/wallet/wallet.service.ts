@@ -155,17 +155,17 @@ export class WalletService {
 
     const reference = `TXN_${nanoid(20)}`;
 
-    const paystackRes = await this.paystackService.initializeTransaction({
-      email: user.email,
-      amount: dto.amount,
+    const paystackRes = await this.paystackService.initializeTransaction(
+      user.email,
+      dto.amount,
       reference,
-      callback_url: this.config.get<string>('paystackCallbackUrl'),
-      metadata: {
+      {
         userId,
         walletId: wallet.id,
         paymentMethod: dto.paymentMethod,
       },
-    });
+      this.config.get<string>('frontendUrl'),
+    );
 
     const txn = this.transactionRepo.create({
       userId,
@@ -460,7 +460,7 @@ export class WalletService {
     userId: string,
     dto: AddBankAccountDto,
   ): Promise<BankAccount> {
-    const resolved = await this.paystackService.resolveAccount(
+    const resolved = await this.paystackService.verifyBankAccount(
       dto.accountNumber,
       dto.bankCode,
     );

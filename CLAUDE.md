@@ -119,4 +119,4 @@ In CampaignsController, `/campaigns/mine` must be registered **before** `/campai
 
 ### Webhook Raw Body
 
-`main.ts` disables NestJS's default body parser (`bodyParser: false`) and adds explicit `express.json()` with a `verify` callback that stores the raw buffer on `req.rawBody`. This ensures `req.rawBody` is always available for Paystack webhook HMAC-SHA512 verification.
+Paystack webhook HMAC-SHA512 verification uses `JSON.stringify(body)` from the `@Body()` decorator — no raw body middleware needed. Paystack sends compact JSON that round-trips through `JSON.parse`/`JSON.stringify` identically.
