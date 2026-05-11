@@ -54,7 +54,7 @@ All feature modules live under `src/modules/`. Each module follows the pattern: 
 
 ### Request Pipeline (order matters)
 
-ThrottlerGuard → CORS → JwtAuthGuard → BlockGuard → RolesGuard → DepositGuard → ValidationPipe → Handler
+ThrottlerGuard → JwtAuthGuard → BlockGuard → RolesGuard → DepositGuard → ValidationPipe → Handler
 
 - `@Public()` skips JWT auth
 - `@Roles('admin')` triggers RolesGuard
@@ -119,4 +119,4 @@ In CampaignsController, `/campaigns/mine` must be registered **before** `/campai
 
 ### Webhook Raw Body
 
-`main.ts` must apply `express.raw({ type: 'application/json' })` on `/v1/webhooks/paystack` before the global JSON parser, and the NestFactory must be created with `{ rawBody: true }`.
+`main.ts` disables NestJS's default body parser (`bodyParser: false`) and adds explicit `express.json()` with a `verify` callback that stores the raw buffer on `req.rawBody`. This ensures `req.rawBody` is always available for Paystack webhook HMAC-SHA512 verification.
