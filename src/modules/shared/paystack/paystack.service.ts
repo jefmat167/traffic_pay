@@ -275,16 +275,20 @@ export class PaystackService {
     }
   }
 
-  verifyWebhookSignature(payload: string, signature: string): boolean {
+  verifyWebhookSignature(payload: Buffer | string, signature: string): boolean {
     const webhookSecret = this.configService.get<string>('paystackWebhookSecret', '');
-    if (!webhookSecret) return false;
+    if (!webhookSecret || !signature) return false;
 
     const hash = crypto
       .createHmac('sha512', webhookSecret)
       .update(payload)
       .digest('hex');
 
-    return hash === signature;
+    const hashBuf = Buffer.from(hash, 'utf8');
+    const sigBuf = Buffer.from(signature, 'utf8');
+    if (hashBuf.length !== sigBuf.length) return false;
+
+    return crypto.timingSafeEqual(hashBuf, sigBuf);
   }
 
   generateReference(prefix: string = 'TXN'): string {

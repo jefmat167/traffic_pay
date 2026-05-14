@@ -1,12 +1,11 @@
 import {
-  Body,
   Controller,
-  ForbiddenException,
   Headers,
   HttpCode,
   HttpStatus,
   Logger,
   Post,
+  Req,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -53,15 +52,21 @@ export class PaystackWebhookController {
   @ApiResponse({ status: 200, description: 'Webhook processed', schema: { example: { received: true } } })
   @ApiForbiddenResponse({ description: 'Invalid webhook signature' })
   async handleWebhook(
-    @Body() body: PaystackWebhookEvent,
+    @Req() req: { rawBody?: Buffer },
     @Headers('x-paystack-signature') signature: string,
   ) {
-    const rawBody = JSON.stringify(body);
+    const rawBody = req.rawBody;
+    if (!rawBody) {
+      this.logger.error('Raw body not available — ensure rawBody is enabled in NestFactory.create()');
+      throw new UnauthorizedException('Unable to verify signature');
+    }
+
     if (!this.paystackService.verifyWebhookSignature(rawBody, signature)) {
       this.logger.warn('Invalid Paystack webhook signature');
       throw new UnauthorizedException('Invalid signature');
     }
 
+    const body: PaystackWebhookEvent = JSON.parse(rawBody.toString());
     const { event, data } = body;
     this.logger.log(`Received Paystack webhook: ${event}`);
 

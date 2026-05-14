@@ -93,6 +93,8 @@ All responses wrapped by `ResponseInterceptor`: `{ success: true, data: ... }` f
 
 Google OAuth only (verify `idToken` server-side). JWT access tokens (RS256, 15m expiry) + refresh token rotation (30d). Refresh tokens stored as bcrypt hashes. Blocking a user immediately revokes all their refresh tokens.
 
+**Local dev shortcut:** `src/modules/test-auth/` provides email/password registration and login (bypassing Google OAuth). It's conditionally loaded via `require()` in `app.module.ts` and is gitignored — never available in production.
+
 ### Caching (Redis)
 
 `platform:stats` (5min), `platform:config` (1hr), `campaign:list:{hash}` (30s), `user:blocked:{userId}` (60s).
@@ -119,4 +121,4 @@ In CampaignsController, `/campaigns/mine` must be registered **before** `/campai
 
 ### Webhook Raw Body
 
-Paystack webhook HMAC-SHA512 verification uses `JSON.stringify(body)` from the `@Body()` decorator — no raw body middleware needed. Paystack sends compact JSON that round-trips through `JSON.parse`/`JSON.stringify` identically.
+Paystack webhook HMAC-SHA512 verification uses `req.rawBody` (a `Buffer` preserved by NestJS's `rawBody: true` option in `NestFactory.create()`). The controller reads the raw bytes directly — never `JSON.stringify(body)` — to ensure the HMAC matches exactly what Paystack signed.
